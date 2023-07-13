@@ -26,6 +26,7 @@ import static com.linecorp.armeria.server.ServiceConfig.validateMaxRequestLength
 import static com.linecorp.armeria.server.ServiceConfig.validateRequestTimeoutMillis;
 import static com.linecorp.armeria.server.VirtualHost.HOSTNAME_WITH_NO_PORT_PATTERN;
 import static com.linecorp.armeria.server.VirtualHost.ensureHostnamePatternMatchesDefaultHostname;
+import static com.linecorp.armeria.server.VirtualHost.normalizeDefaultContextPath;
 import static com.linecorp.armeria.server.VirtualHost.normalizeDefaultHostname;
 import static com.linecorp.armeria.server.VirtualHost.normalizeHostnamePattern;
 import static io.netty.handler.codec.http2.Http2Headers.PseudoHeaderName.isPseudoHeader;
@@ -45,10 +46,12 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -121,6 +124,11 @@ public final class VirtualHostBuilder implements TlsSetters {
     @Nullable
     private String hostnamePattern;
     private int port = -1;
+
+    // contextPath는 default와 아닌 경우 구분할 필요 없음
+    // defaultVirtualHost의 contextPath를 non-defaultContextPath 앞에 넣어줄수 있어야하나?
+    @Nullable
+    private String contextPath;
     @Nullable
     private Supplier<SslContextBuilder> sslContextBuilderSupplier;
     @Nullable
@@ -206,6 +214,14 @@ public final class VirtualHostBuilder implements TlsSetters {
     }
 
     /**
+     * Sets the default hostname of this {@link VirtualHost}.
+     */
+    public VirtualHostBuilder defaultContextPath(String contextPath) {
+        this.contextPath = normalizeDefaultContextPath(contextPath);
+        return this;
+    }
+
+    /**
      * Sets the hostname pattern of this {@link VirtualHost}.
      * If the hostname pattern contains a port number such {@code *.example.com:8080}, the returned virtual host
      * will be bound to the {@code 8080} port. Otherwise, the virtual host will allow all active ports.
@@ -241,6 +257,15 @@ public final class VirtualHostBuilder implements TlsSetters {
                       "hostnamePattern: %s (expected: *.<hostname> or <hostname>)", hostnamePattern);
 
         this.hostnamePattern = normalizeHostnamePattern(hostnamePattern);
+        return this;
+    }
+
+    /**
+     * Sets the contextPath of this {@link VirtualHost}.
+     */
+    public VirtualHostBuilder contextPath(String contextPath) {
+        requireNonNull(contextPath, "contextPath");
+        this.contextPath = contextPath;
         return this;
     }
 
@@ -463,6 +488,25 @@ public final class VirtualHostBuilder implements TlsSetters {
         return this;
     }
 
+    // TODO bokyung-kang elaborate
+//    public void applyPrefix(String pathPrefix, HttpService service) {
+//        requireNonNull(pathPrefix, "pathPrefix");
+//        requireNonNull(service, "service");
+//        final HttpServiceWithRoutes serviceWithRoutes = service.as(HttpServiceWithRoutes.class);
+//        if (serviceWithRoutes != null) {
+//            serviceWithRoutes.routes().forEach(route -> {
+//                final ServiceConfigBuilder serviceConfigBuilder =
+//                        new ServiceConfigBuilder(route.withPrefix(pathPrefix), service);
+//                serviceConfigBuilder.addMappedRoute(route);
+//                addServiceConfigSetters(serviceConfigBuilder);
+//            });
+//        } else {
+//            service
+//            service(Route.builder().pathPrefix(pathPrefix).build(), service);
+//        }
+//        return this;
+//    }
+//
     /**
      * Binds the specified {@link HttpService} at the specified path pattern. e.g.
      * <ul>
@@ -478,7 +522,9 @@ public final class VirtualHostBuilder implements TlsSetters {
      * @throws IllegalArgumentException if the specified path pattern is invalid
      */
     public VirtualHostBuilder service(String pathPattern, HttpService service) {
-        service(Route.builder().path(pathPattern).build(), service);
+        //TODO bokyung-kang elaborate
+        final String prefixed = contextPath == null ? pathPattern : contextPath + pathPattern;
+        service(Route.builder().path(prefixed).build(), service);
         return this;
     }
 
@@ -677,7 +723,28 @@ public final class VirtualHostBuilder implements TlsSetters {
         } else {
             serviceConfigSetters = ImmutableList.copyOf(this.serviceConfigSetters);
         }
+
+//        // TODO bokyung-kang elaborate
+        if (defaultVirtualHostBuilder.contextPath() != null) {
+            return applyPrefixToServiceConfigSetters(serviceConfigSetters,
+                                                     defaultVirtualHostBuilder.contextPath());
+        }
+
         return serviceConfigSetters;
+    }
+
+    private List<ServiceConfigSetters> applyPrefixToServiceConfigSetters(List<ServiceConfigSetters> serviceConfigSetters,
+            String contextPath) {
+        final List<ServiceConfigSetters> prefixedConfigSetters = new ArrayList<>(serviceConfigSetters.size());
+        for (ServiceConfigSetters setters : serviceConfigSetters) {
+            if (setters instanceof ServiceConfigBuilder) {
+                prefixedConfigSetters.add(((ServiceConfigBuilder) setters)
+                                                  .getPrefixedServiceConfigBuilder(contextPath));
+            } else {
+                prefixedConfigSetters.add(setters);
+            }
+        }
+        return prefixedConfigSetters;
     }
 
     VirtualHostBuilder addRouteDecoratingService(RouteDecoratingService routeDecoratingService) {
@@ -1282,6 +1349,13 @@ public final class VirtualHostBuilder implements TlsSetters {
                         return ((AnnotatedServiceBindingBuilder) cfgSetters)
                                 .buildServiceConfigBuilder(extensions, dependencyInjector).stream();
                     } else if (cfgSetters instanceof ServiceConfigBuilder) {
+                        // TODO bokyung-kang elaborate
+//                        final String contextPath = template.contextPath();
+//                        if (contextPath != null) {
+//                            ServiceConfigBuilder configBuilder = ((ServiceConfigBuilder) cfgSetters)
+//                                    .getPrefixedServiceConfigBuilder(contextPath);
+//                            return Stream.of(configBuilder);
+//                        }
                         return Stream.of((ServiceConfigBuilder) cfgSetters);
                     } else {
                         // Should not reach here.
@@ -1310,7 +1384,7 @@ public final class VirtualHostBuilder implements TlsSetters {
         builder.addAll(template.shutdownSupports);
 
         final VirtualHost virtualHost =
-                new VirtualHost(defaultHostname, hostnamePattern, port, sslContext(template),
+                new VirtualHost(defaultHostname, hostnamePattern, port, contextPath, sslContext(template),
                                 serviceConfigs, fallbackServiceConfig, rejectedRouteHandler,
                                 accessLoggerMapper, defaultServiceNaming, defaultLogName, requestTimeoutMillis,
                                 maxRequestLength, verboseResponses, accessLogWriter, blockingTaskExecutor,
@@ -1421,6 +1495,8 @@ public final class VirtualHostBuilder implements TlsSetters {
         }
         return selfSignedCertificate;
     }
+
+    String contextPath() {return contextPath;}
 
     int port() {
         return port;

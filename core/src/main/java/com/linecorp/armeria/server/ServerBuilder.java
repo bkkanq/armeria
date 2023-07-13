@@ -1406,6 +1406,18 @@ public final class ServerBuilder implements TlsSetters {
         return this;
     }
 
+
+    /**
+     * Sets the default hostname of the default {@link VirtualHostBuilder}.
+     */
+    // TODO bokyung-kang
+    public ServerBuilder defaultContextPath(String contextPath) {
+//        defaultVirtualHostBuilder.defaultContextPath(contextPath);
+        // will set in build()
+        virtualHostTemplate.defaultContextPath(contextPath);
+        return this;
+    }
+
     /**
      * Configures the default {@link VirtualHost} with the {@code customizer}.
      */
@@ -1460,6 +1472,15 @@ public final class ServerBuilder implements TlsSetters {
         return virtualHostBuilder;
     }
 
+    public VirtualHostBuilder virtualHost(String defaultHostname, String hostnamePattern, String contextPath) {
+        final VirtualHostBuilder virtualHostBuilder = new VirtualHostBuilder(this, false)
+                .defaultHostname(defaultHostname)
+                .hostnamePattern(hostnamePattern);
+        virtualHostBuilders.add(virtualHostBuilder);
+        return virtualHostBuilder;
+    }
+
+
     /**
      * Adds the <a href="https://en.wikipedia.org/wiki/Virtual_hosting#Port-based">port-based virtual host</a>
      * with the specified {@code port}. The returned virtual host will have a catch-all (wildcard host) name
@@ -1487,6 +1508,27 @@ public final class ServerBuilder implements TlsSetters {
         virtualHostBuilders.add(virtualHostBuilder);
         return virtualHostBuilder;
     }
+
+//    /**
+//     * @param contextPah to set a root context path
+//     * @return {@link VirtualHostBuilder} for building the virtual host
+//     */
+//    public VirtualHostBuilder virtualHostWithPath(String contextPah) {
+//        requireNonNull(contextPah, "contextPath");
+//
+//        // Look for a virtual host that has already been made and reuse it.
+//        final Optional<VirtualHostBuilder> vhost =
+//                virtualHostBuilders.stream()
+//                                   .filter(v -> v.contextPath().equals(contextPah))
+//                                   .findFirst();
+//        if (vhost.isPresent()) {
+//            return vhost.get();
+//        }
+//
+//        final VirtualHostBuilder virtualHostBuilder = new VirtualHostBuilder(this, contextPah);
+//        virtualHostBuilders.add(virtualHostBuilder);
+//        return virtualHostBuilder;
+//    }
 
     /**
      * Decorates all {@link HttpService}s with the specified {@code decorator}.
@@ -1981,6 +2023,7 @@ public final class ServerBuilder implements TlsSetters {
             unhandledExceptionsReporter = null;
         }
 
+        // template의 contextPath활용
         final VirtualHost defaultVirtualHost =
                 defaultVirtualHostBuilder.build(virtualHostTemplate, dependencyInjector,
                                                 unhandledExceptionsReporter);

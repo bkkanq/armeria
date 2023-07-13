@@ -684,4 +684,404 @@ class ServerBuilderTest {
                       .service("/", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
                       .build());
     }
+
+//    @Test
+//    void virtualHostWithContextPath() {
+//        final Server server = Server
+//                .builder()
+//                .port(8080, SessionProtocol.HTTP)
+//                .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK)) // domain based
+//                .virtualHost("/api/v1") // port based
+//                    .hostnamePattern("*.foo.com:8080")
+//                    .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+//                .and()
+//                .virtualHost("/api/v1") // port based - dup
+//                    .hostnamePattern("*.foo.com:8080")
+//                    .service("/bar", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+//                .and()
+//                .virtualHost("/api/v2") // port based
+//                    .hostnamePattern("*.foo.com:8080")
+//                    .service("/hello", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+//                    .service("/world", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+//                .and()
+//                .virtualHost("test.com") // domain based
+//                    .service("/good", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+//                    .service("/bad", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+//                .and()
+//                .build();
+//
+//        server.start().join();
+//
+//        try {
+//            final WebClient client = WebClient.builder("http://127.0.0.1" + ":" + server.activeLocalPort())
+//                                              .factory(clientFactory)
+//                                              .build();
+//            final WebClient fooClient = WebClient.builder("http://foo.com:8080")
+//                                                 .factory(clientFactory)
+//                                                 .build();
+//            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+//                                                       .factory(clientFactory)
+//                                                       .build();
+//
+//            // contextPath from default virtual host
+//            assertThat(client.get("/foo").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//            assertThat(client.get("/internal/fallback").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.NOT_FOUND);
+//
+//            // from 'foo.com' virtual host with contextPath /api/v1
+//            assertThat(fooClient.get("/api/v1/foo").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//            assertThat(fooClient.get("/api/v1/bar").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//
+//            // from 'foo.com' virtual host with contextPath /api/v2
+//            assertThat(fooClient.get("/api/v2/hello").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//            assertThat(fooClient.get("/api/v2/world").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//
+//            // from 'test.com' virtual host
+//            assertThat(testClient.get("/good").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//            assertThat(testClient.get("/bad").aggregate().join().status())
+//                    .isEqualTo(HttpStatus.OK);
+//        } finally {
+//            server.stop();
+//        }
+//    }
+
+
+    @Test
+    void bkkang_min_test() {
+        final Server server = Server
+                .builder()
+                // 1
+                .port(8888, SessionProtocol.HTTP)
+                .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .defaultContextPath("/ab")
+                // 2
+                .virtualHost("*.foo.com:8888")
+                .contextPath("/api/v1")
+                .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .build();
+
+        server.start().join();
+
+        try {
+            final WebClient defaultClient = WebClient//.builder("http://127.0.0.1" + ":" + server.activeLocalPort())
+                                                     .builder("http://127.0.0.1:8888")
+                                                     .factory(clientFactory)
+                                                     .build();
+            final WebClient fooClient = WebClient.builder("http://foo.com:8080")
+                                                 .factory(clientFactory)
+                                                 .build();
+            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+                                                  .factory(clientFactory)
+                                                  .build();
+
+            // (1) contextPath from default virtual host
+            assertThat(defaultClient.get("/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(defaultClient.get("/internal/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // (2), (3) from 'foo.com' virtual host with contextPath /api/v1
+            assertThat(fooClient.get("/api/v1/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/api/v1/bar").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/internal/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // (4) from 'test.com' virtual host
+            assertThat(testClient.get("/good").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/bad").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/good/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            server.stop();
+        }
+    }
+
+
+    // TODO (bokyung-kang)
+    @Test
+    void defaultContextPath() {
+        final Server server = Server
+                .builder()
+                .defaultContextPath("/api")
+                .port(8080, SessionProtocol.HTTP)
+                .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK)) // domain based
+                .virtualHost("/api/v1") // port based
+                    .hostnamePattern("*.foo.com:8080")
+                    .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .virtualHost("/api/v1") // port based - dup
+                    .hostnamePattern("*.foo.com:8080")
+                    .service("/bar", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .virtualHost("/api/v2") // port based
+                    .hostnamePattern("*.foo.com:8080")
+                    .service("/hello", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                    .service("/world", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .virtualHost("test.com") // domain based
+                    .service("/good", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                    .service("/bad", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                .and()
+                .build();
+
+        server.start().join();
+
+        try {
+            final WebClient client = WebClient.builder("http://127.0.0.1" + ":" + server.activeLocalPort())
+                                              .factory(clientFactory)
+                                              .build();
+            final WebClient fooClient = WebClient.builder("http://foo.com:8080")
+                                                 .factory(clientFactory)
+                                                 .build();
+            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+                                                       .factory(clientFactory)
+                                                       .build();
+
+            // contextPath from default virtual host
+            assertThat(client.get("/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(client.get("/internal/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // from 'foo.com' virtual host with contextPath /api/v1
+            assertThat(fooClient.get("/api/v1/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/api/v1/bar").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+
+            // from 'foo.com' virtual host with contextPath /api/v2
+            assertThat(fooClient.get("/api/v2/hello").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/api/v2/world").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+
+            // from 'test.com' virtual host
+            assertThat(testClient.get("/good").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/bad").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void portBasedVirtualHostWithContextPath() {
+        final Server server = Server
+                .builder()
+                // 1
+                .port(8888, SessionProtocol.HTTP)
+                .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .defaultContextPath("/ab")
+                // 2
+                .virtualHost("*.foo.com:8080")
+                    .contextPath("/api/v1")
+                    .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                // 3
+                .virtualHost(9090)
+                    .contextPath("/api/v3")
+                    .service("/example", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                // 4
+                .virtualHost("*.foo.com:8080") // dup hostnamePattern
+                    .contextPath("*.foo.com:8080")
+                    .service("/bar", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                // 4
+                .virtualHost("test.com") // domain based
+                    .service("/good", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                    .service("/bad", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                .and()
+                .build();
+
+        server.start().join();
+
+        try {
+            final WebClient defaultClient = WebClient//.builder("http://127.0.0.1" + ":" + server.activeLocalPort())
+                                                     .builder("http://127.0.0.1:8888")
+                                                     .factory(clientFactory)
+                                                     .build();
+            final WebClient fooClient = WebClient.builder("http://foo.com:8080")
+                                                 .factory(clientFactory)
+                                                 .build();
+            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+                                                  .factory(clientFactory)
+                                                  .build();
+
+            // (1) contextPath from default virtual host
+            assertThat(defaultClient.get("/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(defaultClient.get("/internal/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // (2), (3) from 'foo.com' virtual host with contextPath /api/v1
+            assertThat(fooClient.get("/api/v1/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/api/v1/bar").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/internal/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // (4) from 'test.com' virtual host
+            assertThat(testClient.get("/good").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/bad").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/good/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void domainBasedVirtualHostWithContextPath() {
+        final Server server = Server
+                .builder()
+                // (1)
+                .service("/foo", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                // (2)
+                .virtualHost("test.com") // domain based
+                    .service("/good", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                    .service("/bad", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                .and()
+                .build();
+
+        server.start().join();
+
+        try {
+            final WebClient defaultClient = WebClient.builder("http://127.0.0.1" + ":" + server.activeLocalPort())
+                                              .factory(clientFactory)
+                                              .build();
+            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+                                                  .factory(clientFactory)
+                                                  .build();
+
+            // contextPath from default virtual host
+            assertThat(defaultClient.get("/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(defaultClient.get("/foo/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // from 'test.com' virtual host
+            assertThat(testClient.get("/good").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/bad").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+        } finally {
+            server.stop();
+        }
+    }
+    @Test
+    void virtualHostWithContextPath() {
+        final Server server = Server
+                .builder()
+                .port(8080, SessionProtocol.HTTP)
+                .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK)) // domain based
+                .virtualHost("*.foo.com:8080") // port based
+                    .contextPath("/api/v1")
+                    .service("/foo", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .virtualHost("*.foo.com:8080") // port based - dup
+                .contextPath("/api/v1")
+                .service("/bar", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .virtualHost("/api/v2") // port based
+                .hostnamePattern("*.foo.com:8080")
+                .service("/hello", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .service("/world", (ctx, req) -> HttpResponse.of(HttpStatus.OK))
+                .and()
+                .virtualHost("test.com") // domain based
+                .service("/good", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                .service("/bad", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                .and()
+                .build();
+
+        server.start().join();
+
+        try {
+            final WebClient client = WebClient.builder("http://127.0.0.1" + ":" + server.activeLocalPort())
+                                              .factory(clientFactory)
+                                              .build();
+            final WebClient fooClient = WebClient.builder("http://foo.com:8080")
+                                                 .factory(clientFactory)
+                                                 .build();
+            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+                                                  .factory(clientFactory)
+                                                  .build();
+
+            // contextPath from default virtual host
+            assertThat(client.get("/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(client.get("/internal/fallback").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+
+            // from 'foo.com' virtual host with contextPath /api/v1
+            assertThat(fooClient.get("/api/v1/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/api/v1/bar").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+
+            // from 'foo.com' virtual host with contextPath /api/v2
+            assertThat(fooClient.get("/api/v2/hello").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(fooClient.get("/api/v2/world").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+
+            // from 'test.com' virtual host
+            assertThat(testClient.get("/good").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/bad").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void routing_priority() {
+        final Server server = Server.builder()
+                                    .port(8080, SessionProtocol.HTTP)
+                                    .virtualHost(8080) // port based
+                                        .service("/foo", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                                        .service("/bar", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                                    .and()
+                                    .virtualHost("test.com") // domain based
+                                    .service("/good", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                                    .service("/bad", ((ctx, req) -> HttpResponse.of(HttpStatus.OK)))
+                                    .and()
+                                    .build();
+
+        server.start().join();
+
+        try {
+            final WebClient testClient = WebClient.builder("http://test.com" + ":" + server.activeLocalPort())
+                                                  .factory(clientFactory)
+                                                  .build();
+
+            // port-based has higher priority than domain-based
+            assertThat(testClient.get("/foo").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/bar").aggregate().join().status())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(testClient.get("/good").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(testClient.get("/bad").aggregate().join().status())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            server.stop();
+        }
+    }
 }
